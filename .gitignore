@@ -1,0 +1,13 @@
+bin/
+!.gitignore
+*.DS*
+*.sh
+*.pyc
+*.exe
+*.sys
+*.h
+*.c
+*.s
+*.S
+*.asm
+
