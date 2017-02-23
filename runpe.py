@@ -308,7 +308,7 @@ def dump_context(mu):
     reg_win.addstr("Registers View\n", curses.color_pair(4))
     for reg in regs:
         regval = mu.reg_read(reg[1])
-        out = "{:s} = {:016x} *{:s}".format(reg[0], regval, resolve_sym(regval))
+        out = "{:3s} = {:016x} *{:s}".format(reg[0], regval, resolve_sym(regval))
         string = read_str(mu, regval)
         if len(string) != 0:
             out += " = \"" + string + "\""
@@ -528,7 +528,7 @@ def takeoff(filename, run_length):
 def stop():
     curses.echo()
     curses.nocbreak()
-    stdscr.keypad(0)
+    stdscr.keypad(False)
     curses.endwin()
 
 def start(screen):
@@ -536,7 +536,7 @@ def start(screen):
     global reg_win, ins_win, inf_win, stk_win
 
     stdscr = curses.initscr()
-    stdscr.keypad(1)
+    stdscr.keypad(True)
 
     ins_win = curses.newwin(20, 140, 10, 10)
     ins_win.scrollok(True)
@@ -558,7 +558,7 @@ def start(screen):
 
     curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)
     curses.init_pair(2, curses.COLOR_YELLOW, curses.COLOR_BLACK)
-    curses.init_pair(3, curses.COLOR_RED, curses.COLOR_BLACK)
+    curses.init_pair(3, curses.COLOR_MAGENTA, curses.COLOR_BLACK)
     curses.init_pair(4, curses.COLOR_CYAN, curses.COLOR_BLACK)
 
 def main():
