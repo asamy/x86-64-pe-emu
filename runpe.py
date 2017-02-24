@@ -394,6 +394,7 @@ def hook_mem_fetch(uc, access, addr, size, value, user_data):
     return True
 
 def hook_instr(uc, address, size, user_data):
+    global singlestep
     try:
         rip = uc.reg_read(UC_X86_REG_RIP)
         md = Cs(CS_ARCH_X86, CS_MODE_64)
@@ -405,8 +406,10 @@ def hook_instr(uc, address, size, user_data):
                 insn.mnemonic, insn.op_str), curses.color_pair(1))
         ins_win.refresh()
         dump_context(uc)
-        if singlestep:
-            inf_win.getch()
+        if singlestep and inf_win.getch() == ord('g'):
+            singlestep = False
+            inf_win.addstr("Continue.", curses.color_pair(3))
+            inf_win.refresh()
     except KeyboardInterrupt:
         uc.emu_stop()
 
