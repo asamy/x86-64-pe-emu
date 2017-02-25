@@ -258,7 +258,7 @@ def resolve_sym(addr):
         return "unmapped-imp:{:016X}+{:X}".format(addr, addr - fstart)
     return "unk:{:X}".format(addr)
 
-def dump_stack(mu, orig, start, count):
+def dump_stack(mu, orig, frame, start, count):
     for i in range(count):
         cur = start + i * 8
         val = struct.unpack("<Q", mu.mem_read(cur, 8))[0]
@@ -270,6 +270,8 @@ def dump_stack(mu, orig, start, count):
         c = 3
         if orig == cur:
             c = 1
+        elif frame == cur:
+            c = 4
         stk_win.addstr(out + "\n", curses.color_pair(c))
     stk_win.refresh()
 
@@ -319,11 +321,12 @@ def dump_context(mu):
             curses.color_pair(2))
     reg_win.refresh()
 
+    rbp = mu.reg_read(UC_X86_REG_RBP)
     rsp = mu.reg_read(UC_X86_REG_RSP)
     stk_win.erase()
     stk_win.addstr("Stack View\n", curses.color_pair(4))
-    dump_stack(mu, rsp, rsp - 0x40, 5)
-    dump_stack(mu, rsp, rsp, 20)
+    dump_stack(mu, rsp, rbp, rsp - 0x40, 5)
+    dump_stack(mu, rsp, rbp, rsp, 50)
 
 def __build_gdt_seg(base, limit, dpl, code_seg):
     # Type
@@ -475,11 +478,11 @@ def takeoff(filename, run_length):
             name = ""
             if sym.import_by_ordinal:
                 if sym.name is not None:
-                    name = "Ord: {:s}+{:s} ord {:d}".format(module.dll.decode("utf-8"),
+                    name = "Ord: {:s}+{:s}+{:d}".format(module.dll.decode("utf-8"),
                         sym.name.decode("utf-8"),
                         sym.ordinal)
                 else:
-                    name = "Ord: {:s} ord {:d}".format(module.dll.decode("utf-8"),
+                    name = "Ord: {:s}+{:d}".format(module.dll.decode("utf-8"),
                         sym.ordinal)
             else:
                 # Hint
@@ -552,7 +555,7 @@ def start(screen):
     stk_win.idlok(False)
 
     inf_win = curses.newwin(100, 100, 30, 10)
-    inf_win.scrollok(True)
+    #inf_win.scrollok(True)
  
     curses.echo()
     curses.cbreak()
