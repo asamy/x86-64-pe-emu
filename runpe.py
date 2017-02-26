@@ -76,6 +76,8 @@ GDT_FS_LIMIT = 0x7c00
 GDT_GS_BASE = GDT_FS_BASE + GDT_FS_LIMIT + PAGE_SIZE
 GDT_GS_LIMIT = 0xFFFFFFFF
 
+md = Cs(CS_ARCH_X86, CS_MODE_64)
+md.detail = True
 singlestep = True
 breakpoints = []
 regs = [
@@ -403,9 +405,6 @@ def hook_instr(uc, address, size, user_data):
     global singlestep
     try:
         rip = uc.reg_read(UC_X86_REG_RIP)
-        md = Cs(CS_ARCH_X86, CS_MODE_64)
-        md.detail = True
-        #md.syntax = CS_OPT_SYNTAX_ATT
         mem = uc.mem_read(address, size)
         for insn in md.disasm(mem, size):
             ins_win.addstr("{:s}: {:5s}\t{:s}\n".format(resolve_sym(rip),
@@ -574,6 +573,7 @@ def main():
     parser.add_argument("--file", help="work on this file", type=str)
     parser.add_argument("--ss", help="single step mode", type=bool)
     parser.add_argument("--len", help="instructions to run", type=int)
+    parser.add_argument("--att", help="AT&T disasm syntax", type=bool)
     args = parser.parse_args()
     if args.file == None:
         print("File argument is required")
@@ -583,6 +583,9 @@ def main():
     global singestep
     if args.ss != None:
         singlestep = args.ss
+
+    if args.att != None:
+        md.syntax = CS_OPT_SYNTAX_ATT
 
     length = -1
     if args.len != None:
