@@ -26,7 +26,7 @@ X86_EFLAGS_IF = 1 << 9
 X86_EFLAGS_DF = 1 << 10
 X86_EFLAGS_OF = 1 << 11
 X86_EFLAGS_IOPL = 1 << 12
-X86_EFLAGS_IOPOL_MASK = 3 << 12
+X86_EFLAGS_IOPL_MASK = 3 << 12
 X86_EFLAGS_NT = 1 << 14
 X86_EFLAGS_RF = 1 << 16
 X86_EFLAGS_VM = 1 << 17
@@ -125,7 +125,7 @@ def uc_access_to_bits(access):
         return ACCESS_EXEC
     return ACCESS_NONE
 
-def is_bp_addr(addr):
+def find_bp_addr(addr):
     for bp in breakpoints:
         if addr >= bp.addr and addr < bp.addr + bp.size:
             return bp
@@ -275,8 +275,11 @@ def dump_stack(mu, orig, frame, start, count):
         stk_win.addstr(out + "\n", curses.color_pair(c))
     stk_win.refresh()
 
+def efl_iopl(efl):
+    return (efl >> 12) & 3
+
 def dump_eflags(efl):
-    e = ""
+    e = "iopl({:x}) ".format(efl_iopl(efl))
     if efl & X86_EFLAGS_CF:
         e += "cf "
     if efl & X86_EFLAGS_PF:
@@ -387,13 +390,13 @@ def hook_instr_unmapped(uc, access, addr, size, value, user_data):
     return False
 
 def hook_mem_access(uc, access, addr, size, value, user_data):
-    bpa = is_bp_addr(addr)
-    if bpa is not None and (bpa.access & uc_access_to_bits(access)) != 0:
-        inf_win.addstr("Breakpoint hit at {:s} val = {:X}\n".format(resolve_sym(addr), value))
-        inf_win.refresh()
-    return True
+    global singlestep
 
-def hook_mem_fetch(uc, access, addr, size, value, user_data):
+    bpa = find_bp_addr(addr)
+    if bpa is not None and (bpa.access & uc_access_to_bits(access)) != 0:
+        inf_win.addstr("Breakpoint hit at {:s} val = {:X} access {:X}\n".format(resolve_sym(addr), value, access))
+        inf_win.refresh()
+        singlestep = True
     return True
 
 def hook_instr(uc, address, size, user_data):
@@ -512,13 +515,12 @@ def takeoff(filename, run_length):
             hook_mem_unmapped)
     mu.hook_add(UC_HOOK_MEM_FETCH_UNMAPPED,
             hook_instr_unmapped)
-    mu.hook_add(UC_HOOK_MEM_WRITE | UC_HOOK_MEM_READ,
+    mu.hook_add(UC_HOOK_MEM_WRITE | UC_HOOK_MEM_READ | UC_HOOK_MEM_FETCH,
             hook_mem_access)
-    mu.hook_add(UC_HOOK_MEM_FETCH,
-            hook_mem_fetch)
 
     # Set breakpoints
     breakpoints.append(Breakpoint(IMAGE_BASE, size, ACCESS_WRITE))
+    breakpoints.append(Breakpoint(MIN_FUNC_ADDR, MAX_FUNC_PAGES * PAGE_SIZE, ACCESS_EXEC))
 
     # Let it rip.
     inf_win.addstr("FIRE IN THE HOLE\n")
