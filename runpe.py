@@ -5,6 +5,8 @@ from unicorn import *
 from unicorn.x86_const import *
 from capstone import *
 from capstone.x86 import *
+from trace import *
+from disp import *
 
 import struct
 import pefile
@@ -14,26 +16,6 @@ import ctypes
 import string
 import curses
 import argparse
-
-X86_EFLAGS_CF = 1 << 0
-X86_EFLAGS_FIXED = 1 << 1
-X86_EFLAGS_PF = 1 << 2
-X86_EFLAGS_AF = 1 << 4
-X86_EFLAGS_ZF = 1 << 6
-X86_EFLAGS_SF = 1 << 7
-X86_EFLAGS_TF = 1 << 8
-X86_EFLAGS_IF = 1 << 9
-X86_EFLAGS_DF = 1 << 10
-X86_EFLAGS_OF = 1 << 11
-X86_EFLAGS_IOPL = 1 << 12
-X86_EFLAGS_IOPL_MASK = 3 << 12
-X86_EFLAGS_NT = 1 << 14
-X86_EFLAGS_RF = 1 << 16
-X86_EFLAGS_VM = 1 << 17
-X86_EFLAGS_AC = 1 << 18
-X86_EFLAGS_VIF = 1 << 19
-X86_EFLAGS_VIP = 1 << 20
-X86_EFLAGS_ID = 1 << 21
 
 PAGE_SHIFT = 12
 PAGE_SIZE = 1 << PAGE_SHIFT
@@ -76,8 +58,9 @@ GDT_FS_LIMIT = 0x7c00
 GDT_GS_BASE = GDT_FS_BASE + GDT_FS_LIMIT + PAGE_SIZE
 GDT_GS_LIMIT = 0xFFFFFFFF
 
-md = Cs(CS_ARCH_X86, CS_MODE_64)
-md.detail = True
+cs = Cs(CS_ARCH_X86, CS_MODE_64)
+cs.detail = True
+trace = Trace()
 singlestep = True
 breakpoints = []
 regs = [
@@ -155,87 +138,11 @@ def is_redzone_addr(addr):
 def is_faked_func(addr):
     return in_range(addr, MIN_FUNC_ADDR, MAX_FUNC_ADDR)
 
-def probe_access(mu, addr):
+def probe_access(uc, addr):
     try:
-        mu.mem_read(addr, 1)
+        uc.mem_read(addr, 1)
     except:
         return False
-
-def read_str(mu, addr):
-    tmp = ""
-    r = addr
-    while True:
-        try:
-            v = mu.mem_read(r, 1)
-        except:
-            break
-        if v == '\0' or v < 0 or v > 128:
-            break
-        tmp += v
-        r += 1
-    return tmp
-
-def read_bytes(mu, addr, length):
-    b = bytes()
-    r = addr
-    i = 0
-    while i < length:
-        try:
-            v = mu.mem_read(r, 1)
-        except:
-            break
-
-        b += v
-        i += 1
-        r += 1
-    return b
-
-def disp_hex_ascii_line(buf, length, off):
-    r = "{:05d}    ".format(off)
-    for i in range(length):
-        r += "{:02X} ".format(buf[i])
-        if i == 7:
-            r += ' '
-    if length < 8:
-        r += ' '
-
-    if length < 16:
-        gap = 16 - length
-        for i in range(gap):
-            r += "    "
-    r += "    "
-
-    for i in range(length):
-        if ord(chr(buf[i])) < 128:
-            r += chr(buf[i])
-        else:
-            r += "."
-    r += "\n"
-    return r
-
-def disp_bytes(mu, addr, length):
-    buf = read_bytes(mu, addr, length)
-    if len(buf) == 0:
-        return ""
-
-    if len(buf) <= 16:
-        return disp_hex_ascii_line(buf, len(buf), 0)
-
-    r = ""
-    off = 0
-    boff = 0
-    rem = len(buf)
-    while True:
-        line_len = 16 % rem
-        r += disp_hex_ascii_line(buf[boff:boff+line_len], line_len, off)
-
-        rem -= line_len
-        boff += line_len
-        off += 16
-        if rem <= 16:
-            r += disp_hex_ascii_line(buf[boff:boff+line_len], rem, off)
-            break
-    return r
 
 def resolve_sym(addr):
     if in_range(addr, IMAGE_BASE, image_size):
@@ -260,12 +167,12 @@ def resolve_sym(addr):
         return "unmapped-imp:{:016X}+{:X}".format(addr, addr - fstart)
     return "unk:{:X}".format(addr)
 
-def dump_stack(mu, orig, frame, start, count):
+def dump_stack(uc, orig, frame, start, count):
     for i in range(count):
         cur = start + i * 8
-        val = struct.unpack("<Q", mu.mem_read(cur, 8))[0]
+        val = struct.unpack("<Q", uc.mem_read(cur, 8))[0]
         out = "{:x} {:016x} => {:s}".format(cur, val, resolve_sym(val))
-        string = read_str(mu, val)
+        string = read_str(uc, val)
         if len(string) != 0:
             out += "=> \"" + string + "\""
 
@@ -277,61 +184,28 @@ def dump_stack(mu, orig, frame, start, count):
         stk_win.addstr(out + "\n", curses.color_pair(c))
     stk_win.refresh()
 
-def efl_iopl(efl):
-    return (efl >> 12) & 3
-
-def dump_eflags(efl):
-    e = "iopl({:x}) ".format(efl_iopl(efl))
-    if efl & X86_EFLAGS_CF:
-        e += "cf "
-    if efl & X86_EFLAGS_PF:
-        e += "pf "
-    if efl & X86_EFLAGS_AF:
-        e += "af "
-    if efl & X86_EFLAGS_ZF:
-        e += "zf "
-    if efl & X86_EFLAGS_SF:
-        e += "sf "
-    if efl & X86_EFLAGS_TF:
-        e += "tf "
-    if efl & X86_EFLAGS_OF:
-        e += "of "
-    if efl & X86_EFLAGS_NT:
-        e += "nt "
-    if efl & X86_EFLAGS_RF:
-        e += "rF "
-    if efl & X86_EFLAGS_VM:
-        e += "vm "
-    if efl & X86_EFLAGS_AC:
-        e += "ac "
-    if efl & X86_EFLAGS_VIF:
-        e += "vif "
-    if efl & X86_EFLAGS_ID:
-        e += "id"
-    return e
-
-def dump_context(mu):
+def dump_context(uc):
     reg_win.erase()
     reg_win.addstr("Registers View\n", curses.color_pair(4))
     for reg in regs:
-        regval = mu.reg_read(reg[1])
+        regval = uc.reg_read(reg[1])
         out = "{:3s} = {:016x} *{:s}".format(reg[0], regval, resolve_sym(regval))
-        string = read_str(mu, regval)
+        string = read_str(uc, regval)
         if len(string) != 0:
             out += " = \"" + string + "\""
         reg_win.addstr(out + "\n", curses.color_pair(2))
 
-    eflags = mu.reg_read(UC_X86_REG_EFLAGS)
+    eflags = uc.reg_read(UC_X86_REG_EFLAGS)
     reg_win.addstr("efl = {:08x}\t{:s}".format(eflags, dump_eflags(eflags)),
             curses.color_pair(2))
     reg_win.refresh()
 
-    rbp = mu.reg_read(UC_X86_REG_RBP)
-    rsp = mu.reg_read(UC_X86_REG_RSP)
+    rbp = uc.reg_read(UC_X86_REG_RBP)
+    rsp = uc.reg_read(UC_X86_REG_RSP)
     stk_win.erase()
     stk_win.addstr("Stack View\n", curses.color_pair(4))
-    dump_stack(mu, rsp, rbp, rsp - 0x40, 5)
-    dump_stack(mu, rsp, rbp, rsp, 50)
+    dump_stack(uc, rsp, rbp, rsp - 0x40, 5)
+    dump_stack(uc, rsp, rbp, rsp, 50)
 
 def __build_gdt_seg(base, limit, dpl, code_seg):
     # Type
@@ -406,9 +280,10 @@ def hook_instr(uc, address, size, user_data):
     try:
         rip = uc.reg_read(UC_X86_REG_RIP)
         mem = uc.mem_read(address, size)
-        for insn in md.disasm(mem, size):
+        for insn in cs.disasm(mem, size):
             ins_win.addstr("{:s}: {:5s}\t{:s}\n".format(resolve_sym(rip),
                 insn.mnemonic, insn.op_str), curses.color_pair(1))
+            trace.push_insn(uc, rip, insn)
         ins_win.refresh()
         dump_context(uc)
         if singlestep and inf_win.getch() == ord('g'):
@@ -419,19 +294,19 @@ def hook_instr(uc, address, size, user_data):
         uc.emu_stop()
 
 def takeoff(filename, run_length):
-    mu = Uc(UC_ARCH_X86, UC_MODE_64)
+    uc = Uc(UC_ARCH_X86, UC_MODE_64)
 
     # rcx = driver object
-    mu.mem_map(DRIVER_BASE, DRIVER_SIZE)
-    mu.reg_write(UC_X86_REG_RCX, DRIVER_BASE)
+    uc.mem_map(DRIVER_BASE, DRIVER_SIZE)
+    uc.reg_write(UC_X86_REG_RCX, DRIVER_BASE)
 
     # rdx = registry path
-    mu.mem_map(REGISTRY_BASE, REGISTRY_SIZE)
-    mu.reg_write(UC_X86_REG_RDX, REGISTRY_BASE)
+    uc.mem_map(REGISTRY_BASE, REGISTRY_SIZE)
+    uc.reg_write(UC_X86_REG_RDX, REGISTRY_BASE)
 
     # allocate the stack
-    mu.mem_map(STACK_BASE, STACK_SIZE)
-    mu.reg_write(UC_X86_REG_RSP, STACK_BASE + STACK_SIZE - STACK_REDZONE)
+    uc.mem_map(STACK_BASE, STACK_SIZE)
+    uc.reg_write(UC_X86_REG_RSP, STACK_BASE + STACK_SIZE - STACK_REDZONE)
 
     # Map GDT
     gdt = [None] * (GDT_SIZE / 16)
@@ -440,20 +315,20 @@ def takeoff(filename, run_length):
     gdt[GDT_TR_IDX] = build_gdt_seg(GDT_TR_BASE, GDT_TR_LIMIT, 0, 0)
     # Set GDTR
     gdtr = (0, GDT_BASE, GDT_SIZE, 0)
-    mu.reg_write(UC_X86_REG_GDTR, gdtr)
-    mu.mem_map(align(GDT_BASE, PAGE_SIZE), round_up(GDT_SIZE, PAGE_SIZE))
-    mu.mem_write(GDT_BASE, bytes(gdt))
+    uc.reg_write(UC_X86_REG_GDTR, gdtr)
+    uc.mem_map(align(GDT_BASE, PAGE_SIZE), round_up(GDT_SIZE, PAGE_SIZE))
+    uc.mem_write(GDT_BASE, bytes(gdt))
     # Map TR
-    #mu.mem_map(align(GDT_TR_BASE, PAGE_SIZE), round_up(GDT_TR_LIMIT, PAGE_SIZE))
+    #uc.mem_map(align(GDT_TR_BASE, PAGE_SIZE), round_up(GDT_TR_LIMIT, PAGE_SIZE))
 
     # Set segments
-    mu.reg_write(UC_X86_REG_TR, (GDT_TR_IDX << 3, GDT_TR_BASE, GDT_TR_LIMIT, 0x8b))
-    mu.reg_write(UC_X86_REG_FS, GDT_FS_IDX << 3)
-    mu.reg_write(UC_X86_REG_GS, GDT_GS_IDX << 3)
+    uc.reg_write(UC_X86_REG_TR, (GDT_TR_IDX << 3, GDT_TR_BASE, GDT_TR_LIMIT, 0x8b))
+    uc.reg_write(UC_X86_REG_FS, GDT_FS_IDX << 3)
+    uc.reg_write(UC_X86_REG_GS, GDT_GS_IDX << 3)
 
     # Set EFL and TPR
-    mu.reg_write(UC_X86_REG_EFLAGS, X86_EFLAGS_FIXED | X86_EFLAGS_ID | X86_EFLAGS_IF)
-    mu.reg_write(UC_X86_REG_CR8, 0)
+    uc.reg_write(UC_X86_REG_EFLAGS, X86_EFLAGS_FIXED | X86_EFLAGS_ID | X86_EFLAGS_IF)
+    uc.reg_write(UC_X86_REG_CR8, 0)
 
     img = pefile.PE(filename)
     nt_hdr = img.NT_HEADERS
@@ -505,16 +380,16 @@ def takeoff(filename, run_length):
         mod_index += 1
 
     # Ok write it all.
-    mu.mem_map(IMAGE_BASE, size)
-    mu.mem_write(IMAGE_BASE, bytes(data))
+    uc.mem_map(IMAGE_BASE, size)
+    uc.mem_write(IMAGE_BASE, bytes(data))
 
     # Place hooks.
-    mu.hook_add(UC_HOOK_CODE, hook_instr)
-    mu.hook_add(UC_HOOK_MEM_READ_UNMAPPED | UC_HOOK_MEM_WRITE_UNMAPPED,
+    uc.hook_add(UC_HOOK_CODE, hook_instr)
+    uc.hook_add(UC_HOOK_MEM_READ_UNMAPPED | UC_HOOK_MEM_WRITE_UNMAPPED,
             hook_mem_unmapped)
-    mu.hook_add(UC_HOOK_MEM_FETCH_UNMAPPED,
+    uc.hook_add(UC_HOOK_MEM_FETCH_UNMAPPED,
             hook_instr_unmapped)
-    mu.hook_add(UC_HOOK_MEM_WRITE | UC_HOOK_MEM_READ | UC_HOOK_MEM_FETCH,
+    uc.hook_add(UC_HOOK_MEM_WRITE | UC_HOOK_MEM_READ | UC_HOOK_MEM_FETCH,
             hook_mem_access)
 
     # Set breakpoints
@@ -525,18 +400,19 @@ def takeoff(filename, run_length):
     inf_win.addstr("FIRE IN THE HOLE\n")
     inf_win.refresh()
     try:
-        mu.emu_start(IMAGE_BASE + ep, min(run_length, size))
+        uc.emu_start(IMAGE_BASE + ep, min(run_length, size))
     except Exception as e:
         print("Something went wrong: ", e)
 
-    print(">> Emulation finished, CPU context:")
-    dump_context(mu)
+    print(">> Euclation finished, CPU context:")
+    dump_context(uc)
 
 def stop():
     curses.echo()
     curses.nocbreak()
     stdscr.keypad(False)
     curses.endwin()
+    trace.write("out_trace.txt")
 
 def start(screen):
     global stdscr
@@ -573,7 +449,7 @@ def main():
     parser.add_argument("--file", help="work on this file", type=str)
     parser.add_argument("--ss", help="single step mode", type=bool)
     parser.add_argument("--len", help="instructions to run", type=int)
-    parser.add_argument("--att", help="AT&T disasm syntax", type=bool)
+    parser.add_argument("--att", help="AT&T disasm syntax")
     args = parser.parse_args()
     if args.file == None:
         print("File argument is required")
@@ -585,7 +461,7 @@ def main():
         singlestep = args.ss
 
     if args.att != None:
-        md.syntax = CS_OPT_SYNTAX_ATT
+        cs.syntax = CS_OPT_SYNTAX_ATT
 
     length = -1
     if args.len != None:

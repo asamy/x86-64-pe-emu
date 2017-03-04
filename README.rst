@@ -7,9 +7,6 @@ x86-64-pe-emu
         originally designed to run device drivers for analysis, but it will be extended to
         be much more.
 
-        It uses ncurses as the render engine, Unicorn-engine for emulation,
-        Capstone for disassembly, and pefile for PE parsing.
-
 Notes
 -----
 
@@ -24,6 +21,7 @@ Requirements
         - Unicorn engine
         - Capstone engine
         - pefile
+        - numpy
         - Python 2.7
 
 This looks silly, why?
