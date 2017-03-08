@@ -35,6 +35,8 @@ def dump_eflags(efl, iopl=True):
         e += "zf "
     if efl & X86_EFLAGS_SF:
         e += "sf "
+    if efl & X86_EFLAGS_IF:
+        e += "if "
     if efl & X86_EFLAGS_TF:
         e += "tf "
     if efl & X86_EFLAGS_OF:
@@ -84,6 +86,11 @@ def dump_deflags(efl, prev_efl):
             eop += "SF=1 "
         else:
             eop += "SF=0 "
+    if dif & X86_EFLAGS_IF:
+        if efl & X86_EFLAGS_IF:
+            eop += "IF=1 "
+        else:
+            eop += "IF=0 "
     if dif & X86_EFLAGS_TF:
         if efl & X86_EFLAGS_TF:
             eop += "TF=1 "

@@ -17,6 +17,7 @@ INSN_FP_SAVE = 8
 INSN_FP_SETUP = 9
 INSN_RET = 10
 INSN_IRETF = 11
+INSN_LEA = 12
 
 class Instruction:
     def __init__(self, insn, addr):
@@ -27,7 +28,6 @@ class Instruction:
         self.type = INSN_UNK
         self.call = False
         self.labl = False
-        self.calc = 0
         self.cache()
 
     def __repr__(self):
@@ -54,13 +54,7 @@ class Instruction:
                 self.outs = "{:3s} = {:X}".format(insn.reg_name(out.reg).upper(), outp)
             elif out.type == X86_OP_IMM:
                 outp = out.imm & mask
-            """
-            elif out.type == X86_OP_MEM:
-                mem = out.mem
-                tmp = mu.mem_read(mem.base + mem.disp + mem.index * mem.scale, out.size)
-                out = struct.unpack("<Q", tmp)[0]
-                outp = out & mask
-            """
+ 
         efl = mu.reg_read(X86_REG_EFLAGS)
         if (efl ^ prev_efl) != 0:
             self.outs += " " + dump_deflags(efl, prev_efl)
@@ -111,6 +105,8 @@ class Instruction:
                 self.type = INSN_CALL_DYN
             elif r == 4:
                 self.type = INSN_JMP_DYN
+        elif op1 == 0x8d:
+            self.type = INSN_LEA
 
 class Trace:
     def __init__(self):
@@ -133,9 +129,8 @@ class Trace:
         if out is not None:
             # top is definitely a jmp or call, but it could be unconditional so we need to
             # check the addr.
-            top.calc = np.uint64(top.addr) + np.uint64(out[0]) - np.uint64(top.insn.size)
-            if addr == top.calc:
-                i.calc = 0xee
+            jmp_addr = np.uint64(top.addr) + np.uint64(out[0]) - np.uint64(top.insn.size)
+            if addr == jmp_addr:
                 if out[1]:
                     i.call = True
                 else:

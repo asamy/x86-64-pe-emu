@@ -293,7 +293,7 @@ def hook_instr(uc, address, size, user_data):
     except KeyboardInterrupt:
         uc.emu_stop()
 
-def takeoff(filename, run_length):
+def runpe(filename, run_length):
     uc = Uc(UC_ARCH_X86, UC_MODE_64)
 
     # rcx = driver object
@@ -446,9 +446,9 @@ def start(screen):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--file", help="work on this file", type=str)
+    parser.add_argument("--file", help="PE file to run", type=str)
     parser.add_argument("--ss", help="single step mode", type=bool)
-    parser.add_argument("--len", help="instructions to run", type=int)
+    parser.add_argument("--len", help="how many instructions to run", type=int)
     parser.add_argument("--att", help="AT&T disasm syntax")
     args = parser.parse_args()
     if args.file == None:
@@ -468,7 +468,7 @@ def main():
         length = args.length
 
     curses.wrapper(start)
-    takeoff(args.file, length)
+    runpe(args.file, length)
     stop()
 
 if __name__ == "__main__":
