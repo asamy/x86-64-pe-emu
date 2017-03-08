@@ -119,12 +119,6 @@ def find_bp_addr(addr):
 def align(a, size):
     return a & ~(size - 1)
 
-def round_down(s, c):
-    return (s / c) * c
-
-def round_up(s, c):
-    return ((s + c - 1) / c) * c
-
 def in_range(addr, start, size):
     return addr >= start and addr < start + size
 
@@ -207,12 +201,9 @@ def dump_context(uc):
     dump_stack(uc, rsp, rbp, rsp - 0x40, 5)
     dump_stack(uc, rsp, rbp, rsp, 50)
 
-def __build_gdt_seg(base, limit, dpl, code_seg):
+def __build_gdt_seg(base, limit, dpl):
     # Type
     seg_type = 3
-    if code_seg:
-        seg_type = 0xb
-
     # Lower doubleword
     #       bits  0:15 = limit (0:15)
     #       bits 16:31 = base low (bits 0:15)
@@ -245,13 +236,13 @@ def __build_gdt_seg(base, limit, dpl, code_seg):
     shi |= ((base >> 24) & 0xFF) << 24
     return slo | shi << 32
 
-def build_gdt_seg(base, limit, dpl, code_seg):
-    return struct.pack("<QQ", __build_gdt_seg(base, limit, dpl, code_seg), (base >> 32) & 0xFFFFFFFF)
+def build_gdt_seg(base, limit, dpl):
+    return struct.pack("<QQ", __build_gdt_seg(base, limit, dpl), (base >> 32) & 0xFFFFFFFF)
 
 def hook_mem_unmapped(uc, access, addr, size, value, user_data):
     inf_win.addstr("{:s}: memory unmapped (r/w) at {:s} size = {:d} value = {:X}\n".format(resolve_sym(uc.reg_read(UC_X86_REG_RIP)), resolve_sym(addr), size, value))
     inf_win.refresh()
-    uc.mem_map(align(addr, PAGE_SIZE), round_up(size, PAGE_SIZE))
+    uc.mem_map(align(addr, PAGE_SIZE), PAGE_SIZE)
     return True
 
 def hook_instr_unmapped(uc, access, addr, size, value, user_data):
@@ -259,7 +250,7 @@ def hook_instr_unmapped(uc, access, addr, size, value, user_data):
     if is_faked_func(addr):
         inf_win.addstr("mapping fake function " + func_dict[align(addr, PAGE_SIZE)] + "\n")
         inf_win.refresh()
-        uc.mem_map(align(addr, PAGE_SIZE), round_up(size, PAGE_SIZE))
+        uc.mem_map(align(addr, PAGE_SIZE), PAGE_SIZE)
         uc.mem_write(addr, EMPTY_FUNC)
         return True
     inf_win.refresh()
@@ -288,7 +279,7 @@ def hook_instr(uc, address, size, user_data):
         dump_context(uc)
         if singlestep and inf_win.getch() == ord('g'):
             singlestep = False
-            inf_win.addstr("Continue.", curses.color_pair(3))
+            inf_win.addstr("Continue.\n", curses.color_pair(3))
             inf_win.refresh()
     except KeyboardInterrupt:
         uc.emu_stop()
@@ -310,16 +301,16 @@ def runpe(filename, run_length):
 
     # Map GDT
     gdt = [None] * (GDT_SIZE / 16)
-    gdt[GDT_FS_IDX] = build_gdt_seg(GDT_FS_BASE, GDT_FS_LIMIT, 0, 0)
-    gdt[GDT_GS_IDX] = build_gdt_seg(GDT_GS_BASE, GDT_GS_LIMIT, 0, 0)
-    gdt[GDT_TR_IDX] = build_gdt_seg(GDT_TR_BASE, GDT_TR_LIMIT, 0, 0)
+    gdt[GDT_FS_IDX] = build_gdt_seg(GDT_FS_BASE, GDT_FS_LIMIT, 0)
+    gdt[GDT_GS_IDX] = build_gdt_seg(GDT_GS_BASE, GDT_GS_LIMIT, 0)
+    gdt[GDT_TR_IDX] = build_gdt_seg(GDT_TR_BASE, GDT_TR_LIMIT, 0)
     # Set GDTR
     gdtr = (0, GDT_BASE, GDT_SIZE, 0)
     uc.reg_write(UC_X86_REG_GDTR, gdtr)
-    uc.mem_map(align(GDT_BASE, PAGE_SIZE), round_up(GDT_SIZE, PAGE_SIZE))
+    uc.mem_map(align(GDT_BASE, PAGE_SIZE), GDT_SIZE)
     uc.mem_write(GDT_BASE, bytes(gdt))
     # Map TR
-    #uc.mem_map(align(GDT_TR_BASE, PAGE_SIZE), round_up(GDT_TR_LIMIT, PAGE_SIZE))
+    #uc.mem_map(align(GDT_TR_BASE, PAGE_SIZE), GDT_TR_LIMIT)
 
     # Set segments
     uc.reg_write(UC_X86_REG_TR, (GDT_TR_IDX << 3, GDT_TR_BASE, GDT_TR_LIMIT, 0x8b))
