@@ -45,13 +45,13 @@ STACK_BASE = 0xFFFFF8600000000
 STACK_SIZE = 0x6000
 STACK_REDZONE = 0x1000
 
-GDT_BASE = 0xFFFFF880009FA4C0
+GDT_BASE = 0xFFFFF880009FA000
 GDT_SIZE = 0x10000
 GDT_CS_IDX = 2
 GDT_TR_IDX = 8
 GDT_FS_IDX = 10
 GDT_GS_IDX = 5
-GDT_TR_BASE = 0x9f3ec0
+GDT_TR_BASE = 0xfffff0009f3ec000
 GDT_TR_LIMIT = 0x67
 GDT_FS_BASE = 0xfffffffffffb0000
 GDT_FS_LIMIT = 0x7c00
@@ -307,10 +307,10 @@ def runpe(filename, run_length):
     # Set GDTR
     gdtr = (0, GDT_BASE, GDT_SIZE, 0)
     uc.reg_write(UC_X86_REG_GDTR, gdtr)
-    uc.mem_map(align(GDT_BASE, PAGE_SIZE), GDT_SIZE)
+    uc.mem_map(GDT_BASE, GDT_SIZE)
     uc.mem_write(GDT_BASE, bytes(gdt))
     # Map TR
-    #uc.mem_map(align(GDT_TR_BASE, PAGE_SIZE), GDT_TR_LIMIT)
+    uc.mem_map(GDT_TR_BASE, PAGE_SIZE)
 
     # Set segments
     uc.reg_write(UC_X86_REG_TR, (GDT_TR_IDX << 3, GDT_TR_BASE, GDT_TR_LIMIT, 0x8b))
