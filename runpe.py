@@ -201,43 +201,25 @@ def dump_context(uc):
     dump_stack(uc, rsp, rbp, rsp - 0x40, 5)
     dump_stack(uc, rsp, rbp, rsp, 50)
 
-def __build_gdt_seg(base, limit, dpl):
-    # Type
-    seg_type = 3
-    # Lower doubleword
-    #       bits  0:15 = limit (0:15)
-    #       bits 16:31 = base low (bits 0:15)
+def __build_gdt_seg(base, limit, dpl, seg_type):
     slo = limit & 0xFFFF
     slo |= (base & 0xFFFF) << 16
-
-    # Higher doubleword
-    #       bits 0:7   = base mid (bits 16:23)
-    #       bits 8:11  = type
-    #       bit  12    = system
-    #       bit  13:14 = dpl
-    #       bit  15    = present
-    #       bits 16:19 = limit (16:19)
-    #       bit 20     = AVL
-    #       bit 21     = Long mode
-    #       bit 22     = D (16-bit or 32-bit)
-    #       bit 23     = granuality
-    #       bits 24:31 = base high (bits 24:31)
-    shi = ((base >> 16) & 0xFF)
-    if limit > 0xFFFFF:
+    shi = ((base >> 16) & 0xFF) # base mid
+    if limit > 0xFFFFF:     # need granuality?
         limit >>= 12
         shi |= 1 << 23
-    shi |= seg_type << 8
-    shi |= 1 << 12
-    shi |= (dpl & 3) << 13
-    shi |= 1 << 15
-    shi |= ((limit >> 16) & 0xF) << 16
-    shi |= 1 << 20
-    shi |= 1 << 21
-    shi |= ((base >> 24) & 0xFF) << 24
+    shi |= seg_type << 8    # segment type
+    shi |= 1 << 12          # system
+    shi |= (dpl & 3) << 13  # DPL
+    shi |= 1 << 15          # Present
+    shi |= ((limit >> 16) & 0xF) << 16  # limit
+    shi |= 1 << 20          # AVL
+    shi |= 1 << 21          # Long mode
+    shi |= ((base >> 24) & 0xFF) << 24  # base
     return slo | shi << 32
 
-def build_gdt_seg(base, limit, dpl):
-    return struct.pack("<QQ", __build_gdt_seg(base, limit, dpl), (base >> 32) & 0xFFFFFFFF)
+def build_gdt_seg(base, limit, dpl, seg_type):
+    return struct.pack("<QQ", __build_gdt_seg(base, limit, dpl, seg_type), base >> 32)
 
 def hook_mem_unmapped(uc, access, addr, size, value, user_data):
     inf_win.addstr("{:s}: memory unmapped (r/w) at {:s} size = {:d} value = {:X}\n".format(resolve_sym(uc.reg_read(UC_X86_REG_RIP)), resolve_sym(addr), size, value))
@@ -301,9 +283,10 @@ def runpe(filename, run_length):
 
     # Map GDT
     gdt = [None] * (GDT_SIZE / 16)
-    gdt[GDT_FS_IDX] = build_gdt_seg(GDT_FS_BASE, GDT_FS_LIMIT, 0)
-    gdt[GDT_GS_IDX] = build_gdt_seg(GDT_GS_BASE, GDT_GS_LIMIT, 0)
-    gdt[GDT_TR_IDX] = build_gdt_seg(GDT_TR_BASE, GDT_TR_LIMIT, 0)
+    gdt[GDT_CS_IDX] = build_gdt_seg(0, 0xfffff, 0, 11)
+    gdt[GDT_FS_IDX] = build_gdt_seg(GDT_FS_BASE, GDT_FS_LIMIT, 0, 3)
+    gdt[GDT_GS_IDX] = build_gdt_seg(GDT_GS_BASE, GDT_GS_LIMIT, 0, 3)
+    gdt[GDT_TR_IDX] = build_gdt_seg(GDT_TR_BASE, GDT_TR_LIMIT, 0, 3)
     # Set GDTR
     gdtr = (0, GDT_BASE, GDT_SIZE, 0)
     uc.reg_write(UC_X86_REG_GDTR, gdtr)
@@ -316,6 +299,7 @@ def runpe(filename, run_length):
     uc.reg_write(UC_X86_REG_TR, (GDT_TR_IDX << 3, GDT_TR_BASE, GDT_TR_LIMIT, 0x8b))
     uc.reg_write(UC_X86_REG_FS, GDT_FS_IDX << 3)
     uc.reg_write(UC_X86_REG_GS, GDT_GS_IDX << 3)
+    uc.reg_write(UC_X86_REG_CS, GDT_CS_IDX << 3)
 
     # Set EFL and TPR
     uc.reg_write(UC_X86_REG_EFLAGS, X86_EFLAGS_FIXED | X86_EFLAGS_ID | X86_EFLAGS_IF)

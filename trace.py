@@ -18,6 +18,9 @@ INSN_FP_SETUP = 9
 INSN_RET = 10
 INSN_IRETF = 11
 INSN_LEA = 12
+INSN_SYSCALL = 13
+INSN_SYSENTER = 14
+INSN_SYSEXIT = 15
 
 class Instruction:
     def __init__(self, insn, addr):
@@ -83,6 +86,13 @@ class Instruction:
                 self.type = INSN_UD2
             elif op2 == 0x0d or op2 == 0x1f:
                 self.type = INSN_NOP
+            elif op2 == 0x05:
+                self.type = INSN_SYSCALL
+            elif op2 == 0x34:
+                self.type = INSN_SYSENTER
+            elif op2 == 0x35:
+                # no need to check rex.w
+                self.type = INSN_SYSEXIT
         elif op1 == 0x89:
             if rex == 0x48 and modrm == 0xe5:
                 self.type == INSN_FP_SAVE
