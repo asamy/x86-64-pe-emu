@@ -19,8 +19,7 @@ INSN_RET = 10
 INSN_IRETF = 11
 INSN_LEA = 12
 INSN_SYSCALL = 13
-INSN_SYSENTER = 14
-INSN_SYSEXIT = 15
+INSN_SYSEXIT = 14
 
 class Instruction:
     def __init__(self, insn, addr):
@@ -83,20 +82,25 @@ class Instruction:
             if op2 >= 0x80 and op2 <= 0x8f:
                 self.type = INSN_JMP_CONDITIONAL
             elif op2 == 0x0b or op2 == 0xb9:
+                # UD1, UD2.
                 self.type = INSN_UD2
             elif op2 == 0x0d or op2 == 0x1f:
+                # nop qword ptr [rbp]   (rex.w)
+                # nop dword ptr [rbp]
+                # nop word ptr [rbp]    (66h)
                 self.type = INSN_NOP
-            elif op2 == 0x05:
+            elif op2 == 0x05 or op2 == 0x34:
+                # sysenter, syscall
                 self.type = INSN_SYSCALL
-            elif op2 == 0x34:
-                self.type = INSN_SYSENTER
-            elif op2 == 0x35:
+            elif op2 == 0x35 or op2 == 0x07:
                 # no need to check rex.w
                 self.type = INSN_SYSEXIT
         elif op1 == 0x89:
+            # mov rbp, rsp
             if rex == 0x48 and modrm == 0xe5:
                 self.type == INSN_FP_SAVE
         elif op1 == 0x8b:
+            # mov rbp, [rsp + xx]
             if rex == 0x48 and modrm == 0x2c and sib == 0x24:
                 self.type == INSN_FP_SETUP
         elif op1 == 0x90:
