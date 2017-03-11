@@ -133,10 +133,7 @@ class Trace:
         if l != 0:
             top = self.insn_stack[l - 1]
             out = top.process(mu, self.prev_efl)
-            self.prev_efl = mu.reg_read(X86_REG_EFLAGS)
-        else:
-            # First instruction, cache EFL.
-            self.prev_efl = mu.reg_read(X86_REG_EFLAGS)
+        self.prev_efl = mu.reg_read(X86_REG_EFLAGS)
 
         i = Instruction(insn, addr)
         self.insn_stack.append(i)

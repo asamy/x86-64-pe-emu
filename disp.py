@@ -18,6 +18,23 @@ X86_EFLAGS_VIF = 1 << 19
 X86_EFLAGS_VIP = 1 << 20
 X86_EFLAGS_ID = 1 << 21
 
+eflag_list = [
+        ( "CF", X86_EFLAGS_CF ),
+        ( "PF", X86_EFLAGS_PF ),
+        ( "AF", X86_EFLAGS_AF ),
+        ( "ZF", X86_EFLAGS_ZF ),
+        ( "SF", X86_EFLAGS_SF ),
+        ( "IF", X86_EFLAGS_IF ),
+        ( "TF", X86_EFLAGS_TF ),
+        ( "OF", X86_EFLAGS_OF ),
+        ( "NT", X86_EFLAGS_NT ),
+        ( "RF", X86_EFLAGS_RF ),
+        ( "VM", X86_EFLAGS_VM ),
+        ( "AC", X86_EFLAGS_AC ),
+        ( "VIF", X86_EFLAGS_VIF ),
+        ( "ID", X86_EFLAGS_ID )
+        ]
+
 def efl_iopl(efl):
     return (efl >> 12) & 3
 
@@ -25,34 +42,9 @@ def dump_eflags(efl, iopl=True):
     e = ""
     if iopl:
         "iopl({:x}) ".format(efl_iopl(efl))
-    if efl & X86_EFLAGS_CF:
-        e += "cf "
-    if efl & X86_EFLAGS_PF:
-        e += "pf "
-    if efl & X86_EFLAGS_AF:
-        e += "af "
-    if efl & X86_EFLAGS_ZF:
-        e += "zf "
-    if efl & X86_EFLAGS_SF:
-        e += "sf "
-    if efl & X86_EFLAGS_IF:
-        e += "if "
-    if efl & X86_EFLAGS_TF:
-        e += "tf "
-    if efl & X86_EFLAGS_OF:
-        e += "of "
-    if efl & X86_EFLAGS_NT:
-        e += "nt "
-    if efl & X86_EFLAGS_RF:
-        e += "rF "
-    if efl & X86_EFLAGS_VM:
-        e += "vm "
-    if efl & X86_EFLAGS_AC:
-        e += "ac "
-    if efl & X86_EFLAGS_VIF:
-        e += "vif "
-    if efl & X86_EFLAGS_ID:
-        e += "id"
+    for flag in eflag_list:
+        if efl & flag[1]:
+            e += flag[0] + " "
     return e
 
 def dump_deflags(efl, prev_efl):
@@ -61,76 +53,12 @@ def dump_deflags(efl, prev_efl):
     if dif == 0:
         return eop
 
-    if dif & X86_EFLAGS_CF:
-        if efl & X86_EFLAGS_CF:
-            eop = "CF=1 "
-        else:
-            eop = "CF=0 "
-    if dif & X86_EFLAGS_PF:
-        if efl & X86_EFLAGS_PF:
-            eop += "PF=1 "
-        else:
-            eop += "PF=0 "
-    if dif & X86_EFLAGS_AF:
-        if efl & X86_EFLAGS_AF:
-            eop += "AF=1 "
-        else:
-            eop += "AF=0 "
-    if dif & X86_EFLAGS_ZF:
-        if efl & X86_EFLAGS_ZF:
-            eop += "ZF=1 "
-        else:
-            eop += "ZF=0 "
-    if dif & X86_EFLAGS_SF:
-        if efl & X86_EFLAGS_SF:
-            eop += "SF=1 "
-        else:
-            eop += "SF=0 "
-    if dif & X86_EFLAGS_IF:
-        if efl & X86_EFLAGS_IF:
-            eop += "IF=1 "
-        else:
-            eop += "IF=0 "
-    if dif & X86_EFLAGS_TF:
-        if efl & X86_EFLAGS_TF:
-            eop += "TF=1 "
-        else:
-            eop += "TF=0 "
-    if dif & X86_EFLAGS_OF:
-        if efl & X86_EFLAGS_OF:
-            eop += "OF=1 "
-        else:
-            eop += "OF=0 "
-    if dif & X86_EFLAGS_NT:
-        if efl & X86_EFLAGS_NT:
-            eop += "NT=1 "
-        else:
-            eop += "NT=0 "
-    if dif & X86_EFLAGS_RF:
-        if efl & X86_EFLAGS_RF:
-            eop += "RF=1 "
-        else:
-            eop += "RF=0 "
-    if dif & X86_EFLAGS_VM:
-        if efl & X86_EFLAGS_VM:
-            eop += "VM=1 "
-        else:
-            eop += "VM=0 "
-    if dif & X86_EFLAGS_AC:
-        if efl & X86_EFLAGS_AC:
-            eop += "AC=1 "
-        else:
-            eop += "AC=0 "
-    if dif & X86_EFLAGS_VIF:
-        if efl & X86_EFLAGS_VIF:
-            eop += "VIF=1 "
-        else:
-            eop += "VIF=0 "
-    if dif & X86_EFLAGS_ID:
-        if efl & X86_EFLAGS_ID:
-            eop += "ID=1 "
-        else:
-            eop += "ID=0 "
+    for flag in eflag_list:
+        if dif & flag[1]:
+            if efl & flag[1]:
+                eop += flag[0] + "=1 "
+            else:
+                eop += flag[0] + "=0 "
     return eop
 
 def read_str(uc, addr):
