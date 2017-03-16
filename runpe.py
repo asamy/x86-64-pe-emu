@@ -379,7 +379,7 @@ def runpe(filename, run_length):
     except Exception as e:
         print("Something went wrong: ", e)
 
-    print(">> Euclation finished, CPU context:")
+    print(">> Emulation finished, CPU context:")
     dump_context(uc)
 
 def stop():
@@ -422,7 +422,7 @@ def start(screen):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--file", help="PE file to run", type=str)
-    parser.add_argument("--ss", help="single step mode", type=bool)
+    parser.add_argument("--ss", help="single step mode")
     parser.add_argument("--len", help="how many instructions to run", type=int)
     parser.add_argument("--att", help="AT&T disasm syntax")
     args = parser.parse_args()
@@ -433,7 +433,7 @@ def main():
 
     global singestep
     if args.ss != None:
-        singlestep = args.ss
+        singlestep = True
 
     if args.att != None:
         cs.syntax = CS_OPT_SYNTAX_ATT

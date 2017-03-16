@@ -138,9 +138,12 @@ class Trace:
         i = Instruction(insn, addr)
         self.insn_stack.append(i)
         if out is not None:
-            # top is definitely a jmp or call, but it could be unconditional so we need to
+            # top is definitely a jmp or call, but it could be conditional so we need to
             # check the addr.
-            jmp_addr = np.uint64(top.addr) + np.uint64(out[0]) - np.uint64(top.insn.size)
+            if top.type == INSN_JMP_DYN or top.type == INSN_CALL_DYN:
+                jmp_addr = out[0]
+            else:   # rip relative
+                jmp_addr = np.uint64(top.addr) + np.uint64(out[0]) - np.uint64(top.insn.size)
             if addr == jmp_addr:
                 if out[1]:
                     i.call = True
