@@ -59,7 +59,9 @@ class Instruction:
  
         efl = mu.reg_read(X86_REG_EFLAGS)
         if (efl ^ prev_efl) != 0:
-            self.outs += " " + dump_deflags(efl, prev_efl)
+            if len(self.outs) != 0:
+                self.outs += " "
+            self.outs += dump_deflags(efl, prev_efl)
         self.outp = outp
 
         if self.type >= INSN_JMP_CONDITIONAL and self.type <= INSN_JMP_DYN:

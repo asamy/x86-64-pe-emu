@@ -132,9 +132,11 @@ def is_redzone_addr(addr):
 def is_faked_func(addr):
     return in_range(addr, MIN_FUNC_ADDR, MAX_FUNC_ADDR)
 
-def probe_access(uc, addr):
+def probe_access(uc, addr, ac):
     try:
-        uc.mem_read(addr, 1)
+        c = uc.mem_read(addr, 1)
+        if ac & ACCESS_WRITE:
+            uc.mem_write(addr, c)
     except:
         return False
 
@@ -221,10 +223,16 @@ def __build_gdt_seg(base, limit, dpl, seg_type):
 def build_gdt_seg(base, limit, dpl, seg_type):
     return struct.pack("<QQ", __build_gdt_seg(base, limit, dpl, seg_type), base >> 32)
 
+def switch_to_ss(e):
+    global singlestep
+    if e:
+        singlestep = True
+        inf_win.addstr("Singlestep mode active\n")
+
 def hook_mem_unmapped(uc, access, addr, size, value, user_data):
+    switch_to_ss(True)
     inf_win.addstr("{:s}: memory unmapped (r/w) at {:s} size = {:d} value = {:X}\n".format(resolve_sym(uc.reg_read(UC_X86_REG_RIP)), resolve_sym(addr), size, value))
     inf_win.refresh()
-    uc.mem_map(align(addr, PAGE_SIZE), PAGE_SIZE)
     return True
 
 def hook_instr_unmapped(uc, access, addr, size, value, user_data):
@@ -234,35 +242,39 @@ def hook_instr_unmapped(uc, access, addr, size, value, user_data):
         inf_win.refresh()
         uc.mem_map(align(addr, PAGE_SIZE), PAGE_SIZE)
         uc.mem_write(addr, EMPTY_FUNC)
+        switch_to_ss(True)
         return True
     inf_win.refresh()
     return False
 
 def hook_mem_access(uc, access, addr, size, value, user_data):
-    global singlestep
-
     bpa = find_bp_addr(addr)
     if bpa is not None and (bpa.access & uc_access_to_bits(access)) != 0:
+        switch_to_ss(True)
         inf_win.addstr("Breakpoint hit at {:s} val = {:X} access {:X}\n".format(resolve_sym(addr), value, access))
         inf_win.refresh()
-        singlestep = True
     return True
 
 def hook_instr(uc, address, size, user_data):
     global singlestep
     try:
+        is_break = False
         rip = uc.reg_read(UC_X86_REG_RIP)
         mem = uc.mem_read(address, size)
         for insn in cs.disasm(mem, size):
             ins_win.addstr("{:s}: {:5s}\t{:s}\n".format(resolve_sym(rip),
                 insn.mnemonic, insn.op_str), curses.color_pair(1))
             trace.push_insn(uc, rip, insn)
-        ins_win.refresh()
-        dump_context(uc)
-        if singlestep and inf_win.getch() == ord('g'):
+            if insn.opcode[0] == 0xcc:
+                is_break = True
+        switch_to_ss(is_break)
+        if is_break:
+            inf_win.addstr("Breakpoint hit\n", curses.color_pair(3))
+        elif singlestep and inf_win.getch() == ord('g'):
             singlestep = False
             inf_win.addstr("Continue.\n", curses.color_pair(3))
-            inf_win.refresh()
+        ins_win.refresh()
+        dump_context(uc)
     except KeyboardInterrupt:
         uc.emu_stop()
 
@@ -292,6 +304,7 @@ def runpe(filename, run_length):
     uc.reg_write(UC_X86_REG_GDTR, gdtr)
     uc.mem_map(GDT_BASE, GDT_SIZE)
     uc.mem_write(GDT_BASE, bytes(gdt))
+
     # Map TR
     uc.mem_map(GDT_TR_BASE, PAGE_SIZE)
 
