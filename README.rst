@@ -23,6 +23,7 @@ Requirements
         - pefile
         - numpy
         - Python 2.7
+        - Curses (_curses module)
 
 This looks silly, why?
 ----------------------
